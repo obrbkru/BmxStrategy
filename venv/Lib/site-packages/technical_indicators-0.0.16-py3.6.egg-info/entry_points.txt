@@ -1,0 +1,3 @@
+[console_scripts]
+technical_indicators = technical_indicators.technical_indicators:main
+
