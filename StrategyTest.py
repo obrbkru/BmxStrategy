@@ -211,14 +211,17 @@ class PredictedPosition:
         prev_candle = stock.get_hour_candle(-1)
         candle = stock.get_hour_candle()
         ema50 = stock.get_ema_val_by_period(50)
+        ema_fast_period = 10
+        ema_fast = stock.get_ema_val_by_period(ema_fast_period)
+        wma80 = stock.get_wma_val_by_period(80)
         upTail = abs(candle.high - max(candle.open, candle.close))
         downTail = abs(candle.low - min(candle.open, candle.close))
         candleBody = abs(candle.open - candle.close)
 
-        #is_red = candle.open > candle.close
-        self.stopStategy = 0.26
-        self.takeStategy = 0.6
-        self.rejectStategy = 0.8
+        is_red = candle.open > candle.close
+        self.stopStategy = 0.5
+        self.takeStategy = 0.8
+        self.rejectStategy = 0.3
 
         '''
         if candleBody > candle.close / 320 and candleBody < candle.close / 115 and idRed:
@@ -274,18 +277,35 @@ elif downTail > candle.close / 140:
         else:
             return
 
-        k = abs(last_price - ema50)
-        shift = 50#abs(last_price*0.02 - k)
-        if sell:
-            self.side = 'Sell'
-            self.strategy = 5
-            self.open = ema50 + shift
+        shift = 5
 
-        else:
+        if ema_fast > wma80 and stock.get_ema_val_by_period(ema_fast_period, -1) < stock.get_wma_val_by_period(80, -1):
             self.side = 'Buy'
+            self.strategy = 5
+            self.open = last_price - shift
+            print('ema_fast = %s wma80 = %s prev_ema_fast = %s prevWma80 = %s close = %s' % (ema_fast, wma80, stock.get_ema_val_by_period(ema_fast_period, -1), stock.get_wma_val_by_period(80, -1), candle.close))
+        elif ema_fast < wma80 and stock.get_ema_val_by_period(ema_fast_period, -1) > stock.get_wma_val_by_period(80, -1):
+            self.side = 'Sell'
             self.strategy = 6
+            self.open = last_price + shift
+            if int(wma80) == 6584:
+                t = 0
+            print('ema_fast = %s wma80 = %s prev_ema_fast = %s prevWma80 = %s close = %s' % (ema_fast, wma80, stock.get_ema_val_by_period(ema_fast, -1), stock.get_wma_val_by_period(80, -1), candle.close))
+        else:
+            return
+        '''
+        k = abs(last_price - ema50)
+        shift = 50#abs(last_price*0.02 -
+        if last_price > ema50:
+            self.side = 'Buy'
+            self.strategy = 5
             self.open = ema50 - shift
-
+        elif last_price < ema50:
+            self.side = 'Sell'
+            self.strategy = 6
+            self.open = ema50 + shift
+        else:
+            return'''
         #if self.side == 'Buy':
         #    self.open = last_price - last_price * 0.3 / 100
         #else :
@@ -440,6 +460,7 @@ class Bitmex:
         records = db.get_records('bitmex_candles_1m')
         #records = db.get_records('binance_candles_1m')
         self.ema_dict = {}
+        self.wma_dict = {}
         self.minute_candles = []
         self.hour_candles = []
         self.hour_candles_close_price = []
@@ -461,6 +482,8 @@ class Bitmex:
                     t = 0
                 hour_candle = Candle(open=minute_candle.open, high=0, low=0, close=0,
                                      volume=0, openTime=minute_candle.openTime, closeTime=0)
+                if minute_candle.openTime == datetime.fromtimestamp(1538377200):
+                    t = 0
                 if hours_counter == 0:
                     day_candle = Candle(open=minute_candle.open, high=0, low=0, close=0,
                                          volume=0, openTime=minute_candle.openTime, closeTime=0)
@@ -505,6 +528,22 @@ class Bitmex:
             return None
 
         return self.ema_dict[period][current_hour_candle - 1 + num]
+
+    def get_wma_val_by_period(self, period, num = 0):
+        if num > 0:
+            return None #unexpected number of candle, expected negative value
+
+        if not period in self.wma_dict:
+            #pricesDataFrame = pd.DataFrame({'Close': self.hour_candles_close_price})
+            #self.wma_dict[period] = pricesDataFrame.rolling(period).mean()['Close']
+            self.wma_dict[period] = [0]*80
+            self.wma_dict[period].extend(wma(self.hour_candles_close_price, period))
+
+        current_hour_candle = int(self.current_minute_candle/60)
+        if current_hour_candle == 0 or current_hour_candle + num < 0:
+            return None
+
+        return self.wma_dict[period][current_hour_candle - 1 + num]
 
     def get_next_minute_candle(self):
         if self.current_minute_candle >= len(self.minute_candles):
